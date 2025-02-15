@@ -6,3 +6,5 @@ langgraph
 gradio
 langchain-anthropic
 langgraph-cli[inmem]
+langchain-mongodb  
+pymongo
