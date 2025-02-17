@@ -44,17 +44,18 @@ def categorize(state: State) -> State:
 def analyze_sentiment(state: State) -> State:
     """Analyze sentiment of the query."""
     prompt = ChatPromptTemplate.from_template(
-        "Analyze the sentiment of the following customer query "
-        "Response with either 'Positive', 'Neutral', or 'Negative'. Query: {query}"
+        "ตรวจสอบว่าข้อความต่อไปนี้มีคำหยาบคายหรือไม่ "
+        "ตอบเพียง 'Negative' ถ้ามีคำหยาบ หรือ 'Neutral' ถ้าไม่มีคำหยาบ "
+        "ข้อความ: {query}"
     )
     chain = prompt | llm
-    sentiment = chain.invoke({"query": state["query"]}).content
+    sentiment = chain.invoke({"query": state["query"]}).content.strip()
     return {"sentiment": sentiment}
 
 def handle_technical(state: State) -> State:
     """Handle technical queries."""
     prompt = ChatPromptTemplate.from_template(
-        "Provide a technical support response to the following query: {query}"
+        "คุณเป็นพนักงานฝ่ายสนับสนุนด้านเทคนิค ของ MyOrder กรุณาตอบคำถามต่อไปนี้ด้วยภาษาไทย: {query}"
     )
     chain = prompt | llm
     response = chain.invoke({"query": state["query"]}).content
@@ -63,7 +64,7 @@ def handle_technical(state: State) -> State:
 def handle_billing(state: State) -> State:
     """Handle billing queries."""
     prompt = ChatPromptTemplate.from_template(
-        "Provide a billing support response to the following query: {query}"
+        "คุณเป็นพนักงานฝ่ายการเงิน ของ MyOrder กรุณาตอบคำถามเกี่ยวกับการชำระเงินต่อไปนี้ด้วยภาษาไทย: {query}"
     )
     chain = prompt | llm
     response = chain.invoke({"query": state["query"]}).content
@@ -72,7 +73,7 @@ def handle_billing(state: State) -> State:
 def handle_general(state: State) -> State:
     """Handle general queries."""
     prompt = ChatPromptTemplate.from_template(
-        "Provide a general support response to the following query: {query}"
+        "คุณเป็นพนักงานฝ่ายบริการลูกค้า ของ MyOrder กรุณาตอบคำถามทั่วไปต่อไปนี้ด้วยภาษาไทย: {query}"
     )
     chain = prompt | llm
     response = chain.invoke({"query": state["query"]}).content
@@ -88,13 +89,12 @@ def handle_package(state: State) -> State:
     chat_history = conversation_memory.load_memory_variables({})["chat_history"]
     
     prompt = ChatPromptTemplate.from_template(
-        "You are a customer service agent. Provide a helpful response about our available packages in Thai language.\n"
-        "Customer query: {query}\n\n"
-        "Previous conversation history: {chat_history}\n\n"
-        "Additional context: {context}\n\n"
-        "Provide a detailed response about our packages and help the customer choose "
-        "the most suitable option based on their query. Focus on the number of Facebook Pages "
-        "they can connect and highlight the 24/7 admin support available in all packages."
+        "คุณเป็นพนักงานฝ่ายบริการลูกค้า ของ MyOrder ให้ข้อมูลเกี่ยวกับแพ็คเกจที่มีให้บริการ\n"
+        "คำถามจากลูกค้า: {query}\n\n"
+        "ประวัติการสนทนา: {chat_history}\n\n"
+        "ข้อมูลเพิ่มเติม: {context}\n\n"
+        "กรุณาให้รายละเอียดเกี่ยวกับแพ็คเกจของเราและช่วยลูกค้าเลือกแพ็คเกจที่เหมาะสมที่สุด "
+        "โดยเน้นจำนวน Facebook Pages ที่สามารถเชื่อมต่อได้ และการมีทีมแอดมินดูแล 24 ชั่วโมงในทุกแพ็คเกจ"
     )
     
     chain = prompt | llm
@@ -123,9 +123,10 @@ def route_query(state: State) -> str:
     """Route query based on category and sentiment."""
     print(f"DEBUG - Category: {state['category']}, Sentiment: {state['sentiment']}")
     
-    if state["sentiment"] == "Negative":
+    sentiment = state["sentiment"].strip().title()
+    if sentiment == "Negative":
         return "escalate"
-    # Use direct string comparison with normalized category
+
     category = state["category"].strip().capitalize()
     if category == "Package":
         return "handle_package"
@@ -133,7 +134,7 @@ def route_query(state: State) -> str:
         return "handle_technical"
     elif category == "Billing":
         return "handle_billing"
-    else:  # Fallback to general for any unexpected categories
+    else:
         return "handle_general"
 
 workflow = StateGraph(State)
@@ -147,7 +148,6 @@ workflow.add_node("handle_package", handle_package)
 workflow.add_node("escalate", escalate)
 workflow.add_node("process_retriever", process_retriever_results)
 
-workflow.add_edge("categorize", "analyze_sentiment")
 workflow.add_conditional_edges(
     "analyze_sentiment",
     route_query, {
@@ -159,15 +159,15 @@ workflow.add_conditional_edges(
     }
 )
 
-workflow.add_edge("process_retriever", "handle_package")
+workflow.set_entry_point("categorize")
 
+workflow.add_edge("categorize", "analyze_sentiment")
+workflow.add_edge("process_retriever", "handle_package")
 workflow.add_edge("handle_technical", END)
 workflow.add_edge("handle_billing", END)
 workflow.add_edge("handle_general", END)
 workflow.add_edge("handle_package", END)
 workflow.add_edge("escalate", END)
-
-workflow.set_entry_point("categorize")
 
 checkpoint_memory = MemorySaver()
 
